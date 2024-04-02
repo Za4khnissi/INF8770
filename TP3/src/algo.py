@@ -8,7 +8,7 @@ def index_video(file_path, n_images):
     index = {}
     cap = cv2.VideoCapture(file_path)
     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    fps = cap.get(cv2.CAP_PROP_FPS)
+    fps = cap.get(cv2.CAP_PROP_FPS) 
     frame_step = max(frame_count // n_images, 1)
 
     for i in range(0, frame_count, frame_step):
@@ -38,7 +38,7 @@ def search_image(path_image, index, threshold, max_threshold):
             best_match = k
         # Early termination if distance is already above the maximum threshold
         if min_distance > max_threshold:
-            break
+            return "out", None
 
     if best_match and min_distance <= threshold:
         return best_match.split('_')[0], best_match.rsplit('_', 1)[1]
@@ -48,7 +48,7 @@ def search_image(path_image, index, threshold, max_threshold):
 def search_all_images(path_images, path_videos, n_images, threshold, max_threshold, output_file):
     with open(output_file, 'w', newline='') as csvfile:
         writer = csv.writer(csvfile)
-        writer.writerow(['image', 'video', 'timestamp'])
+        writer.writerow(['image', 'video', 'minutage'])
 
     for image_file in sorted(os.listdir(path_images)):
         found_match = False
@@ -62,7 +62,8 @@ def search_all_images(path_images, path_videos, n_images, threshold, max_thresho
             video_match, timestamp = search_image(image_path, index, threshold, max_threshold)
 
             if video_match != "out":
-                video_name = os.path.basename(video_match)  
+                full_video_name = os.path.basename(video_match)
+                video_name = os.path.splitext(full_video_name)[0]
                 with open(output_file, 'a', newline='') as csvfile:
                     writer = csv.writer(csvfile)
                     writer.writerow([image_file.split('.')[0], video_name, timestamp])
@@ -74,12 +75,11 @@ def search_all_images(path_images, path_videos, n_images, threshold, max_thresho
                 writer = csv.writer(csvfile)
                 writer.writerow([image_file.split('.')[0], "out", None])
 
-# Exemple d'utilisation
 path_videos = "C:/Users/zkhni/Desktop/Github Repo/INF8770/TP3/data/mp4"
 path_images = "C:/Users/zkhni/Desktop/Github Repo/INF8770/TP3/data/jpeg"
-n_images = 10
-threshold = 0.1
-max_threshold = 5
-output_file = "C:/Users/zkhni/Desktop/Github Repo/INF8770/TP3/results/results.csv"
+n_images = 7
+threshold = 0.5
+max_threshold = 0.7
+output_file = "C:/Users/zkhni/Desktop/Github Repo/INF8770/TP3/results/test.csv"
 
 search_all_images(path_images, path_videos, n_images, threshold, max_threshold, output_file)
