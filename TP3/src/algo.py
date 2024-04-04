@@ -129,22 +129,44 @@ def calculate_total_frame_size(path_videos):
         total_frame_size += frame_size * frame_count
     return total_frame_size
 
-def estimate_jpeg_size(video_path, sample_size=10, jpeg_quality=90):
-    cap = cv2.VideoCapture(video_path)
-    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    frame_indices = np.linspace(0, frame_count - 1, sample_size).astype(int)
+# takes too much time to compute so commented
 
-    total_size = 0
-    for frame_index in frame_indices:
-        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
-        ret, frame = cap.read()
-        if ret:
-            _, jpeg_data = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), jpeg_quality])
-            total_size += len(jpeg_data)
+# def estimate_jpeg_size(video_path, sample_size=10, jpeg_quality=90):
+#     cap = cv2.VideoCapture(video_path)
+#     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+#     frame_indices = np.linspace(0, frame_count - 1, sample_size).astype(int)
 
-    cap.release()
-    average_size = total_size / sample_size
-    return average_size, average_size * frame_count
+#     total_size = 0
+#     for frame_index in frame_indices:
+#         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
+#         ret, frame = cap.read()
+#         if ret:
+#             _, jpeg_data = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), jpeg_quality])
+#             total_size += len(jpeg_data)
+
+#     cap.release()
+#     average_size = total_size / sample_size
+#     return average_size, average_size * frame_count
+
+def calculate_mean_of_last_two_columns(output_file_time):
+    index_time_sum = 0
+    search_time_sum = 0
+    row_count = 0
+    
+    with open(output_file_time, 'r') as csvfile:
+        csvreader = csv.reader(csvfile)
+        next(csvreader)  # Skip the header row
+        for row in csvreader:
+            index_time_sum += float(row[1])
+            search_time_sum += float(row[2])
+            row_count += 1
+            
+    if row_count > 0:
+        mean_index_time = index_time_sum / row_count
+        mean_search_time = search_time_sum / row_count
+        return mean_index_time, mean_search_time
+    else:
+        return 0, 0
 
 n_images = 7 # empirically determined
 threshold = 0.5
@@ -161,13 +183,13 @@ output_file = os.path.join(results_dir, 'test.csv')
 output_file_time = os.path.join(results_dir, 'time.csv')
 
 
-average_size_per_frame, estimated_total_size = estimate_jpeg_size(path_videos)
+# average_size_per_frame, estimated_total_size = estimate_jpeg_size(path_videos)
 
-total_estimated_size = 0
-for video_file in os.listdir(path_videos):
-    video_path = os.path.join(path_videos, video_file)
-    _, estimated_total_size = estimate_jpeg_size(video_path)
-    total_estimated_size += estimated_total_size
+# total_estimated_size = 0
+# for video_file in os.listdir(path_videos):
+#     video_path = os.path.join(path_videos, video_file)
+#     _, estimated_total_size = estimate_jpeg_size(video_path)
+#     total_estimated_size += estimated_total_size
 
 
 
@@ -177,10 +199,16 @@ Tc = calculate_matrix_size(n_videos, n_images)
 
 total_frame_size = calculate_total_frame_size(path_videos)
 
+mean_index_time, mean_search_time = calculate_mean_of_last_two_columns(output_file_time)
+print(f"Moyenne temps d'indexation: {mean_index_time}")
+print(f"Moyenne temps de recherche: {mean_search_time}")
+
+
 compression_rate = (1 - Tc / To)
 print(f"Storage size: {To:.2f} bytes")
 print(f"Compression rate: {compression_rate:.2f}")
 print(f"Total frame size: {total_frame_size:.2f} bytes")
-print(f"Estimated total size for all frames of all videos in JPEG: {total_estimated_size} bytes")
+# print(f"Estimated total size for all frames of all videos in JPEG: {total_estimated_size} bytes")
 
+# uncomment to run the search
 # search_all_images(path_images, path_videos, n_images, threshold, output_file, output_file_time)
