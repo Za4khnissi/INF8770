@@ -95,13 +95,17 @@ def search_all_images(path_images, path_videos, n_images, threshold, output_file
             writer = csv.writer(csvfile)
             writer.writerow([image_file, f"{index_time:.4f}", f"{search_time:.4f}"])
 
+script_dir = os.path.dirname(__file__)
+data_dir = os.path.join(script_dir, '../data')
+results_dir = os.path.join(script_dir, '../results')
 
-path_videos = "C:/Users/zkhni/Desktop/Github Repo/INF8770/TP3/data/mp4"
-path_images = "C:/Users/zkhni/Desktop/Github Repo/INF8770/TP3/data/jpeg"
+path_videos = os.path.join(data_dir, 'mp4')
+path_images = os.path.join(data_dir, 'jpeg')
+output_file = os.path.join(results_dir, 'test.csv')
+output_file_time = os.path.join(results_dir, 'time.csv')
+
 n_images = 7 # Number of images to index per video (7 images for 7 seconds) empereically chosen
 threshold = 0.5 # Threshold to consider a match empereically chosen
 max_threshold = 0.7
-output_file = "C:/Users/zkhni/Desktop/Github Repo/INF8770/TP3/results/test.csv"
-output_file_time = "C:/Users/zkhni/Desktop/Github Repo/INF8770/TP3/results/time.csv"
 
 search_all_images(path_images, path_videos, n_images, threshold, output_file, output_file_time)
