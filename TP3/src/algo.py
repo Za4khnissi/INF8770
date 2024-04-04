@@ -26,7 +26,6 @@ def index_video(file_path, n_images):
             timestamps.append(f"{file_path}_{sec_ms}")
     cap.release()
     
-    # Convert index to a KDTree for efficient nearest-neighbor search
     kdtree = KDTree(np.array(index), leaf_size=40, metric='euclidean')
     return kdtree, timestamps
 
@@ -66,13 +65,13 @@ def search_all_images(path_images, path_videos, n_images, threshold, output_file
             video_path = os.path.join(path_videos, video_file)
             print(f"   Vérification dans la vidéo {video_file}...")
             start_index_timer = time.time()
-            # The index_video function now returns a KDTree object and timestamps
+
             kdtree, timestamps = index_video(video_path, n_images)
             index_time = time.time() - start_index_timer
             total_index_time += index_time
 
             start_search_timer = time.time()
-            # Adjusting the search_image call to include the missing kdtree and timestamps
+
             video_match, timestamp = search_image(image_path, kdtree, timestamps, threshold)
             search_time = time.time() - start_search_timer
             total_search_time += search_time
@@ -147,8 +146,8 @@ def estimate_jpeg_size(video_path, sample_size=10, jpeg_quality=90):
     average_size = total_size / sample_size
     return average_size, average_size * frame_count
 
-n_images = 7
-threshold = 0.5 
+n_images = 7 # empirically determined
+threshold = 0.5
 max_threshold = 0.7
 
 script_dir = os.path.dirname(__file__)
