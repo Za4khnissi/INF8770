@@ -95,17 +95,39 @@ def search_all_images(path_images, path_videos, n_images, threshold, output_file
             writer = csv.writer(csvfile)
             writer.writerow([image_file, f"{index_time:.4f}", f"{search_time:.4f}"])
 
+def calculate_storage_size(path_videos):
+    total_size = 0
+    for video_file in os.listdir(path_videos):
+        video_path = os.path.join(path_videos, video_file)
+        total_size += os.path.getsize(video_path)
+    return total_size
+
+def calculate_matrix_size(n_videos, n_images):
+    bytes_per_float = 4
+    n_bins = 8 * 8 * 8
+    return n_images * n_bins * bytes_per_float * n_videos
+
 script_dir = os.path.dirname(__file__)
 data_dir = os.path.join(script_dir, '../data')
 results_dir = os.path.join(script_dir, '../results')
 
+
 path_videos = os.path.join(data_dir, 'mp4')
 path_images = os.path.join(data_dir, 'jpeg')
-output_file = os.path.join(results_dir, 'test.csv')
-output_file_time = os.path.join(results_dir, 'time.csv')
+output_file = os.path.join(results_dir, 'test1.csv')
+output_file_time = os.path.join(results_dir, 'time1.csv')
 
 n_images = 7 # Number of images to index per video (7 images for 7 seconds) empereically chosen
 threshold = 0.5 # Threshold to consider a match empereically chosen
 max_threshold = 0.7
 
-search_all_images(path_images, path_videos, n_images, threshold, output_file, output_file_time)
+
+n_videos = len(os.listdir(path_videos))
+To = calculate_storage_size(path_videos)
+Tc = calculate_matrix_size(n_videos, n_images)
+
+compression_rate = (1 - Tc / To)
+print(f"Storage size: {To:.2f} bytes")
+print(f"Compression rate: {compression_rate:.2f}")
+
+# search_all_images(path_images, path_videos, n_images, threshold, output_file, output_file_time)
