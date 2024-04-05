@@ -1,18 +1,18 @@
 import cv2
 import numpy as np
 import os
-from scipy.spatial import distance
 import csv
 import time
 from sklearn.neighbors import KDTree
+from sklearn.cluster import KMeans
 
-def index_video(file_path, n_images):
+def index_video(file_path):
     index = []
     timestamps = []
     cap = cv2.VideoCapture(file_path)
     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     fps = cap.get(cv2.CAP_PROP_FPS) 
-    frame_step = frame_count // n_images
+    frame_step = max(1, frame_count // 7)
 
     for i in range(0, frame_count, frame_step):
         cap.set(cv2.CAP_PROP_POS_FRAMES, i)
@@ -26,10 +26,11 @@ def index_video(file_path, n_images):
             timestamps.append(f"{file_path}_{sec_ms}")
     cap.release()
     
-    kdtree = KDTree(np.array(index), leaf_size=40, metric='euclidean')
+    kdtree = KDTree(np.array(index), leaf_size=10, metric='euclidean')
     return kdtree, timestamps
 
-def search_image(path_image, kdtree, timestamps, threshold):
+def search_image(path_image, kdtree, timestamps):
+    threshold = 0.2
     image = cv2.imread(path_image)
     hist = cv2.calcHist([image], [0, 1, 2], None, [8, 8, 8], [0, 256, 0, 256, 0, 256])
     hist = cv2.normalize(hist, hist).flatten()
@@ -44,7 +45,7 @@ def search_image(path_image, kdtree, timestamps, threshold):
     else:
         return "out", None
 
-def search_all_images(path_images, path_videos, n_images, threshold, output_file, output_file_time):
+def search_all_images(path_images, path_videos, output_file, output_file_time):
     total_index_time = 0
     total_search_time = 0
 
@@ -64,15 +65,14 @@ def search_all_images(path_images, path_videos, n_images, threshold, output_file
         for video_file in sorted(os.listdir(path_videos)):
             video_path = os.path.join(path_videos, video_file)
             print(f"   Vérification dans la vidéo {video_file}...")
-            start_index_timer = time.time()
 
-            kdtree, timestamps = index_video(video_path, n_images)
+            start_index_timer = time.time()
+            kdtree, timestamps = index_video(video_path)
             index_time = time.time() - start_index_timer
             total_index_time += index_time
 
             start_search_timer = time.time()
-
-            video_match, timestamp = search_image(image_path, kdtree, timestamps, threshold)
+            video_match, timestamp = search_image(image_path, kdtree, timestamps)
             search_time = time.time() - start_search_timer
             total_search_time += search_time
 
@@ -168,10 +168,6 @@ def calculate_mean_of_last_two_columns(output_file_time):
     else:
         return 0, 0
 
-n_images = 7 # empirically determined
-threshold = 0.5
-max_threshold = 0.7
-
 script_dir = os.path.dirname(__file__)
 data_dir = os.path.join(script_dir, '../data')
 results_dir = os.path.join(script_dir, '../results')
@@ -179,8 +175,8 @@ results_dir = os.path.join(script_dir, '../results')
 
 path_videos = os.path.join(data_dir, 'mp4')
 path_images = os.path.join(data_dir, 'jpeg')
-output_file = os.path.join(results_dir, 'test.csv')
-output_file_time = os.path.join(results_dir, 'time.csv')
+output_file = os.path.join(results_dir, 'test_1.csv')
+output_file_time = os.path.join(results_dir, 'time_1.csv')
 
 
 # average_size_per_frame, estimated_total_size = estimate_jpeg_size(path_videos)
@@ -193,22 +189,23 @@ output_file_time = os.path.join(results_dir, 'time.csv')
 
 
 
-n_videos = len(os.listdir(path_videos))
-To = calculate_storage_size(path_videos)
-Tc = calculate_matrix_size(n_videos, n_images)
+# n_videos = len(os.listdir(path_videos))
+# To = calculate_storage_size(path_videos)
+# Tc = calculate_matrix_size(n_videos, n_images)
 
-total_frame_size = calculate_total_frame_size(path_videos)
+# total_frame_size = calculate_total_frame_size(path_videos)
 
-mean_index_time, mean_search_time = calculate_mean_of_last_two_columns(output_file_time)
-print(f"Moyenne temps d'indexation: {mean_index_time}")
-print(f"Moyenne temps de recherche: {mean_search_time}")
+# mean_index_time, mean_search_time = calculate_mean_of_last_two_columns(output_file_time)
+# print(f"Moyenne temps d'indexation: {mean_index_time}")
+# print(f"Moyenne temps de recherche: {mean_search_time}")
 
 
-compression_rate = (1 - Tc / To)
-print(f"Storage size: {To:.2f} bytes")
-print(f"Compression rate: {compression_rate:.2f}")
-print(f"Total frame size: {total_frame_size:.2f} bytes")
+# compression_rate = (1 - Tc / To)
+# print(f"Storage size: {To:.2f} bytes")
+# print(f"Compression rate: {compression_rate:.2f}")
+# print(f"Total frame size: {total_frame_size:.2f} bytes")
 # print(f"Estimated total size for all frames of all videos in JPEG: {total_estimated_size} bytes")
 
 # uncomment to run the search
-# search_all_images(path_images, path_videos, n_images, threshold, output_file, output_file_time)
+search_all_images(path_images, path_videos, output_file, output_file_time)
+
