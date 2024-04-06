@@ -3,23 +3,28 @@ import numpy as np
 import os
 import csv
 import time
+from sklearn.neighbors import KDTree
 
 def extract_descriptor(frame):
     hist = cv2.calcHist([frame], [0, 1, 2], None, [8, 8, 8], [0, 256, 0, 256, 0, 256])
     return cv2.normalize(hist, hist).flatten()
 
+def extract_descriptor_of_one_channel(frame, channel=0):
+    color_channel = frame[:, :, channel]
+    hist = cv2.calcHist([color_channel], [channel], None, [8], [0, 256])
+    return cv2.normalize(hist, hist).flatten()
+
 def index_all_videos(path_videos):
     global_index = []
-    metadata = []
+    timestamps = []
 
     for video_file in sorted(os.listdir(path_videos)):
         print(f"Indexing video {video_file}...")
         video_path = os.path.join(path_videos, video_file)
         cap = cv2.VideoCapture(video_path)
-        fps = cap.get(cv2.CAP_PROP_FPS)
         frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        print(f"Frame count: {frame_count}, FPS: {fps}")
-        frame_step = 3
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        frame_step = 10
 
         for i in range(0, frame_count, frame_step):
             cap.set(cv2.CAP_PROP_POS_FRAMES, i)
@@ -29,31 +34,24 @@ def index_all_videos(path_videos):
                 global_index.append(descriptor)
                 time_stamp = i / fps
                 sec_ms = f"{int(time_stamp)}.{int((time_stamp - int(time_stamp)) * 1000):03d}"
-                metadata.append(f"{video_file}_{sec_ms}")
+                timestamps.append(f"{video_file}_{sec_ms}")
+        cap.release()
 
-    cap.release()
-    return global_index, metadata
+    global_kdtree = KDTree(np.array(global_index), leaf_size=10, metric='euclidean')
+    return global_kdtree, timestamps
 
-def search_image(path_image, global_index, metadata, threshold=0.1):
+def search_image(path_image, global_kdtree, timestamps, threshold=0.2):
     query_descriptor = extract_descriptor(cv2.imread(path_image))
-    min_distance = np.inf
-    best_match = None
-
-    # Perform linear scan to find the descriptor with the minimum Euclidean distance
-    for i, descriptor in enumerate(global_index):
-        distance = np.linalg.norm(descriptor - query_descriptor)
-        if distance < min_distance:
-            min_distance = distance
-            best_match = i
+    distances, indices = global_kdtree.query([query_descriptor], k=1)
+    min_distance = distances[0][0]
+    best_match = indices[0][0]
 
     if min_distance <= threshold:
-        match_metadata = metadata[best_match]
-        video_name, timestamp = match_metadata.split('_')[0], match_metadata.rsplit('_', 1)[1]
-        return video_name, timestamp
+        return timestamps[best_match].split('_')[0], timestamps[best_match].rsplit('_', 1)[1]
     else:
         return "out", None
 
-def search_all_images(path_images, global_index, metadata, output_file, output_file_time):
+def search_all_images(path_images, global_kdtree, timestamps, output_file, output_file_time):
     with open(output_file, 'w', newline='') as csvfile:
         writer = csv.writer(csvfile)
         writer.writerow(['image', 'video_pred', 'minutage_pred'])
@@ -67,7 +65,7 @@ def search_all_images(path_images, global_index, metadata, output_file, output_f
         print(f"\nSearching for image {image_file} in all videos...")
         
         start_search_timer = time.time()
-        video_pred, minutage_pred = search_image(image_path, global_index, metadata, threshold=0.1)
+        video_pred, minutage_pred = search_image(image_path, global_kdtree, timestamps)
         search_time = time.time() - start_search_timer
 
         with open(output_file, 'a', newline='') as csvfile:
@@ -95,8 +93,8 @@ output_file_time = os.path.join(results_dir, 'time.csv')
 
 print("Indexing videos...")
 start_index_timer = time.time()
-global_index, metadata = index_all_videos(path_videos)
+global_kdtree, timestamps = index_all_videos(path_videos)
 index_time = time.time() - start_index_timer
 print("Searching images...")
-search_all_images(path_images, global_index, metadata, output_file, output_file_time)
+search_all_images(path_images, global_kdtree, timestamps, output_file, output_file_time)
 print(f"Indexing took {index_time:.2f} seconds.")
