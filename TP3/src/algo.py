@@ -4,170 +4,84 @@ import os
 import csv
 import time
 from sklearn.neighbors import KDTree
-from sklearn.cluster import KMeans
 
-def index_video(file_path):
-    index = []
+def extract_descriptor(frame):
+    hist = cv2.calcHist([frame], [0, 1, 2], None, [8, 8, 8], [0, 256, 0, 256, 0, 256])
+    return cv2.normalize(hist, hist).flatten()
+
+def extract_descriptor_of_one_channel(frame, channel=0):
+    color_channel = frame[:, :, channel]
+    hist = cv2.calcHist([color_channel], [channel], None, [8], [0, 256])
+    return cv2.normalize(hist, hist).flatten()
+
+def index_all_videos(path_videos):
+    global_index = []
     timestamps = []
-    cap = cv2.VideoCapture(file_path)
-    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    fps = cap.get(cv2.CAP_PROP_FPS) 
-    frame_step = max(1, frame_count // 7)
 
-    for i in range(0, frame_count, frame_step):
-        cap.set(cv2.CAP_PROP_POS_FRAMES, i)
-        ret, frame = cap.read()
-        if ret:
-            hist = cv2.calcHist([frame], [0, 1, 2], None, [8, 8, 8], [0, 256, 0, 256, 0, 256])
-            hist = cv2.normalize(hist, hist).flatten()
-            index.append(hist)
-            time_stamp = i / fps
-            sec_ms = f"{int(time_stamp)}.{int((time_stamp - int(time_stamp)) * 1000):03d}"
-            timestamps.append(f"{file_path}_{sec_ms}")
-    cap.release()
-    
-    kdtree = KDTree(np.array(index), leaf_size=10, metric='euclidean')
-    return kdtree, timestamps
+    for video_file in sorted(os.listdir(path_videos)):
+        print(f"Indexing video {video_file}...")
+        video_path = os.path.join(path_videos, video_file)
+        cap = cv2.VideoCapture(video_path)
+        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        frame_step = 10
 
-def search_image(path_image, kdtree, timestamps):
-    threshold = 0.2
-    image = cv2.imread(path_image)
-    hist = cv2.calcHist([image], [0, 1, 2], None, [8, 8, 8], [0, 256, 0, 256, 0, 256])
-    hist = cv2.normalize(hist, hist).flatten()
+        for i in range(0, frame_count, frame_step):
+            cap.set(cv2.CAP_PROP_POS_FRAMES, i)
+            ret, frame = cap.read()
+            if ret:
+                descriptor = extract_descriptor(frame)
+                global_index.append(descriptor)
+                time_stamp = i / fps
+                sec_ms = f"{int(time_stamp)}.{int((time_stamp - int(time_stamp)) * 1000):03d}"
+                timestamps.append(f"{video_file}_{sec_ms}")
+        cap.release()
 
-    # Query the KDTree for the nearest neighbor
-    dist, ind = kdtree.query([hist], k=1)
-    nearest_dist = dist[0][0]
-    nearest_index = ind[0][0]
+    global_kdtree = KDTree(np.array(global_index), leaf_size=10, metric='euclidean')
+    return global_kdtree, timestamps
 
-    if nearest_dist <= threshold:
-        return timestamps[nearest_index].split('_')[0], timestamps[nearest_index].rsplit('_', 1)[1]
+def search_image(path_image, global_kdtree, timestamps, threshold=0.2):
+    query_descriptor = extract_descriptor(cv2.imread(path_image))
+    distances, indices = global_kdtree.query([query_descriptor], k=1)
+    min_distance = distances[0][0]
+    best_match = indices[0][0]
+
+    if min_distance <= threshold:
+        return timestamps[best_match].split('_')[0], timestamps[best_match].rsplit('_', 1)[1]
     else:
         return "out", None
 
-def search_all_images(path_images, path_videos, output_file, output_file_time):
-    total_index_time = 0
-    total_search_time = 0
-
-    with open(output_file_time, 'w', newline='') as csvfile:
-        writer = csv.writer(csvfile)
-        writer.writerow(['image', 'index_time', 'search_time'])
-
+def search_all_images(path_images, global_kdtree, timestamps, output_file, output_file_time):
     with open(output_file, 'w', newline='') as csvfile:
         writer = csv.writer(csvfile)
         writer.writerow(['image', 'video_pred', 'minutage_pred'])
 
+    with open(output_file_time, 'w', newline='') as csvfile:
+        time_writer = csv.writer(csvfile)
+        time_writer.writerow(['image', 'search_time'])
+
     for image_file in sorted(os.listdir(path_images)):
-        found_match = False
         image_path = os.path.join(path_images, image_file)
-        print(f"\nRecherche pour l'image {image_file} dans toutes les vidéos...")
+        print(f"\nSearching for image {image_file} in all videos...")
+        
+        start_search_timer = time.time()
+        video_pred, minutage_pred = search_image(image_path, global_kdtree, timestamps)
+        search_time = time.time() - start_search_timer
 
-        for video_file in sorted(os.listdir(path_videos)):
-            video_path = os.path.join(path_videos, video_file)
-            print(f"   Vérification dans la vidéo {video_file}...")
-
-            start_index_timer = time.time()
-            kdtree, timestamps = index_video(video_path)
-            index_time = time.time() - start_index_timer
-            total_index_time += index_time
-
-            start_search_timer = time.time()
-            video_match, timestamp = search_image(image_path, kdtree, timestamps)
-            search_time = time.time() - start_search_timer
-            total_search_time += search_time
-
-            if video_match != "out":
-                full_video_name = os.path.basename(video_match)
-                video_name = os.path.splitext(full_video_name)[0]
-                with open(output_file, 'a', newline='') as csvfile:
-                    writer = csv.writer(csvfile)
-                    writer.writerow([image_file.split('.')[0], video_name, timestamp])
-                found_match = True  
-                break 
-
-        if not found_match:
-            with open(output_file, 'a', newline='') as csvfile:
-                writer = csv.writer(csvfile)
+        video_pred = video_pred.split('.')[0]
+        with open(output_file, 'a', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            if video_pred != "out":
+                writer.writerow([image_file.split('.')[0], video_pred, minutage_pred])
+            else:
                 writer.writerow([image_file.split('.')[0], "out", None])
 
         with open(output_file_time, 'a', newline='') as csvfile:
-            writer = csv.writer(csvfile)
-            writer.writerow([image_file, f"{index_time:.4f}", f"{search_time:.4f}"])
+            time_writer = csv.writer(csvfile)
+            time_writer.writerow([image_file, f"{search_time:.4f}"])
 
-def calculate_storage_size(path_videos):
-    total_size = 0
-    for video_file in os.listdir(path_videos):
-        video_path = os.path.join(path_videos, video_file)
-        total_size += os.path.getsize(video_path)
-    return total_size
-
-def calculate_matrix_size(n_videos, n_images):
-    bytes_per_float = 4
-    n_bins = 8 * 8 * 8
-    return n_images * n_bins * bytes_per_float * n_videos
-
-def calculate_frame_size(video_path):
-    cap = cv2.VideoCapture(video_path)
-    if not cap.isOpened():
-        print(f"Unable to open video: {video_path}")
-        return 0
-
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    n_channels = 3
-    bit_depth = 1
+    print("Finished searching images.")
     
-    cap.release()
-    return width * height * n_channels * bit_depth
-
-def calculate_total_frame_size(path_videos):
-    total_frame_size = 0
-    for video_file in os.listdir(path_videos):
-        video_path = os.path.join(path_videos, video_file)
-        frame_count = int(cv2.VideoCapture(video_path).get(cv2.CAP_PROP_FRAME_COUNT))
-        frame_size = calculate_frame_size(video_path)
-        total_frame_size += frame_size * frame_count
-    return total_frame_size
-
-# takes too much time to compute so commented
-
-# def estimate_jpeg_size(video_path, sample_size=10, jpeg_quality=90):
-#     cap = cv2.VideoCapture(video_path)
-#     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-#     frame_indices = np.linspace(0, frame_count - 1, sample_size).astype(int)
-
-#     total_size = 0
-#     for frame_index in frame_indices:
-#         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
-#         ret, frame = cap.read()
-#         if ret:
-#             _, jpeg_data = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), jpeg_quality])
-#             total_size += len(jpeg_data)
-
-#     cap.release()
-#     average_size = total_size / sample_size
-#     return average_size, average_size * frame_count
-
-def calculate_mean_of_last_two_columns(output_file_time):
-    index_time_sum = 0
-    search_time_sum = 0
-    row_count = 0
-    
-    with open(output_file_time, 'r') as csvfile:
-        csvreader = csv.reader(csvfile)
-        next(csvreader)  # Skip the header row
-        for row in csvreader:
-            index_time_sum += float(row[1])
-            search_time_sum += float(row[2])
-            row_count += 1
-            
-    if row_count > 0:
-        mean_index_time = index_time_sum / row_count
-        mean_search_time = search_time_sum / row_count
-        return mean_index_time, mean_search_time
-    else:
-        return 0, 0
-
 script_dir = os.path.dirname(__file__)
 data_dir = os.path.join(script_dir, '../data')
 results_dir = os.path.join(script_dir, '../results')
@@ -175,37 +89,13 @@ results_dir = os.path.join(script_dir, '../results')
 
 path_videos = os.path.join(data_dir, 'mp4')
 path_images = os.path.join(data_dir, 'jpeg')
-output_file = os.path.join(results_dir, 'test_1.csv')
-output_file_time = os.path.join(results_dir, 'time_1.csv')
+output_file = os.path.join(results_dir, 'test.csv')
+output_file_time = os.path.join(results_dir, 'time.csv')
 
-
-# average_size_per_frame, estimated_total_size = estimate_jpeg_size(path_videos)
-
-# total_estimated_size = 0
-# for video_file in os.listdir(path_videos):
-#     video_path = os.path.join(path_videos, video_file)
-#     _, estimated_total_size = estimate_jpeg_size(video_path)
-#     total_estimated_size += estimated_total_size
-
-
-
-# n_videos = len(os.listdir(path_videos))
-# To = calculate_storage_size(path_videos)
-# Tc = calculate_matrix_size(n_videos, n_images)
-
-# total_frame_size = calculate_total_frame_size(path_videos)
-
-# mean_index_time, mean_search_time = calculate_mean_of_last_two_columns(output_file_time)
-# print(f"Moyenne temps d'indexation: {mean_index_time}")
-# print(f"Moyenne temps de recherche: {mean_search_time}")
-
-
-# compression_rate = (1 - Tc / To)
-# print(f"Storage size: {To:.2f} bytes")
-# print(f"Compression rate: {compression_rate:.2f}")
-# print(f"Total frame size: {total_frame_size:.2f} bytes")
-# print(f"Estimated total size for all frames of all videos in JPEG: {total_estimated_size} bytes")
-
-# uncomment to run the search
-search_all_images(path_images, path_videos, output_file, output_file_time)
-
+print("Indexing videos...")
+start_index_timer = time.time()
+global_kdtree, timestamps = index_all_videos(path_videos)
+index_time = time.time() - start_index_timer
+print("Searching images...")
+search_all_images(path_images, global_kdtree, timestamps, output_file, output_file_time)
+print(f"Indexing took {index_time:.2f} seconds.")

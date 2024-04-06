@@ -85,6 +85,7 @@ def search_all_images(path_images, global_kdtree, timestamps, output_file, outpu
         video_pred, minutage_pred = search_image(image_path, global_kdtree, timestamps)
         search_time = time.time() - start_search_timer
 
+        video_pred = video_pred.split('.')[0]
         with open(output_file, 'a', newline='') as csvfile:
             writer = csv.writer(csvfile)
             if video_pred != "out":
