@@ -9,10 +9,17 @@ def extract_descriptor(frame):
     hist = cv2.calcHist([frame], [0, 1, 2], None, [8, 8, 8], [0, 256, 0, 256, 0, 256])
     return cv2.normalize(hist, hist).flatten()
 
-def extract_descriptor_of_one_channel(frame, channel=0):
-    color_channel = frame[:, :, channel]
-    hist = cv2.calcHist([color_channel], [channel], None, [8], [0, 256])
-    return cv2.normalize(hist, hist).flatten()
+def extract_1d_descriptors(frame):
+    # Initialisation d'une liste pour stocker les descripteurs de chaque canal
+    descriptors = []
+    
+    # Calculer et normaliser l'histogramme pour chaque canal de couleur
+    for channel in range(3):  # Pour R, G, B
+        hist = cv2.calcHist([frame], [channel], None, [8], [0, 256])
+        normalized_hist = cv2.normalize(hist, hist).flatten()
+        descriptors.extend(normalized_hist)  # Concaténer les descripteurs
+    
+    return np.array(descriptors)
 
 def index_all_videos(path_videos):
     global_index = []
@@ -24,13 +31,13 @@ def index_all_videos(path_videos):
         cap = cv2.VideoCapture(video_path)
         frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         fps = cap.get(cv2.CAP_PROP_FPS)
-        frame_step = 10
+        frame_step = max(1, int(frame_count / 30))
 
         for i in range(0, frame_count, frame_step):
             cap.set(cv2.CAP_PROP_POS_FRAMES, i)
             ret, frame = cap.read()
             if ret:
-                descriptor = extract_descriptor(frame)
+                descriptor = extract_1d_descriptors(frame)
                 global_index.append(descriptor)
                 time_stamp = i / fps
                 sec_ms = f"{int(time_stamp)}.{int((time_stamp - int(time_stamp)) * 1000):03d}"
@@ -40,8 +47,8 @@ def index_all_videos(path_videos):
     global_kdtree = KDTree(np.array(global_index), leaf_size=10, metric='euclidean')
     return global_kdtree, timestamps
 
-def search_image(path_image, global_kdtree, timestamps, threshold=0.2):
-    query_descriptor = extract_descriptor(cv2.imread(path_image))
+def search_image(path_image, global_kdtree, timestamps, threshold=0.45):
+    query_descriptor = extract_1d_descriptors(cv2.imread(path_image))
     distances, indices = global_kdtree.query([query_descriptor], k=1)
     min_distance = distances[0][0]
     best_match = indices[0][0]
